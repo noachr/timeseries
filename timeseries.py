@@ -4,14 +4,14 @@ __all__ = ["TimeSeriesItem","TimeSeriesList","UCRArchive"]
 
 class TimeSeriesItem(ItemBase):
     def __init__(self,ts,name=""):
-        self.data = self.obj = torch.tensor(ts,dtype=torch.float)
+        self.data = self.obj = torch.tensor(ts,dtype=torch.float) if isinstance(ts,np.ndarray) else ts
         self.name = name
         
     def show(self, ax, title="",channels=None, **kwargs):
         x = self.data
         if channels: x = x[:,channels]
         ax.plot(x)
-        ax.set_title(title)
+        ax.set_title(title or self.name)
         
     def show_channels(self):
         rows = math.ceil(self.data.shape[1] / 3)
@@ -22,14 +22,25 @@ class TimeSeriesItem(ItemBase):
     
     def __str__(self):
         return f"Time series of size {self.data.shape}"
+    
+    def clone(self):
+        return self.__class__(self.data.clone(),self.name)
+    
+    def apply_tfms(self,tfms):
+        x = self.clone()
+        for tfm in tfms:
+            x.data = tfm(x.data)
+        return x
+    
 
 class TimeSeriesList(ItemList):
-    def __init__(self,items,labeled=-1,**kwargs):
+    def __init__(self,items,labeled=-1,return_index=False,**kwargs):
         self.labeled = labeled
         super().__init__(items, **kwargs)
+        self.return_index = return_index
     
     def new(self, items, **kwargs):
-        return super().new(items,labeled=self.labeled,**kwargs)
+        return super().new(items,labeled=self.labeled,return_index=self.return_index,**kwargs)
     
     @classmethod
     def from_csv_list(cls,csv_paths,labelCol=-1,header=None,sep="\t",**kwargs):
@@ -39,7 +50,7 @@ class TimeSeriesList(ItemList):
             dfs.append(pd.read_csv(f,header=header,sep=sep))
             nl += [f.name]*len(dfs[-1])
         df = pd.concat(dfs)
-        return cls(df.values,labeled=labelCol,xtra=np.array(nl))        
+        return cls(df.values,labeled=labelCol,xtra=np.array(nl),**kwargs)        
     
     @classmethod
     def from_numpy(cls,nparray,**kwargs):
@@ -47,7 +58,8 @@ class TimeSeriesList(ItemList):
     
     def get(self, i):
         a = super().get(i).astype(np.float)
-        return TimeSeriesItem(np.delete(a,self.labeled,0) if self.labeled >= 0 else a)
+        a = TimeSeriesItem(np.delete(a,self.labeled,0) if self.labeled >= 0 else a)
+        return (a,i) if self.return_index else a
     
     def get_class(self,i):
         a = super().get(i).astype(np.float)
@@ -66,6 +78,11 @@ class TimeSeriesList(ItemList):
         if isinstance(t,list):
             t = t[0]
         return TimeSeriesItem(t.numpy())
+    
+    def analyze_pred(self,pred):
+        if isinstance(pred,list):
+            pred = pred[0]
+        return super().analyze_pred(pred)
     
     def show_xys(self, xs, ys, figsize=(12,10),channels=None,plotY=True, **kwargs):
         rows = int(math.sqrt(len(xs)))
