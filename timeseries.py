@@ -65,6 +65,10 @@ class TimeSeriesList(ItemList):
         a = super().get(i).astype(np.float)
         return a[self.labeled] if self.labeled >= 0 else 0
     
+    def filter_out_idx(self,idxs):
+        self.items = array([o for i,o in enumerate(self.items) if i not in idxs])
+        return self
+    
     def split_by_csv_name(self, valid_names):
         return self.split_by_idx(np.where(np.isin(self.xtra,valid_names))[0])
     
